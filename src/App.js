@@ -1,36 +1,102 @@
 import React, { useState } from 'react';
 import DPDA from './DPDA';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Paper,
+    Typography,
+    TextField,
+    Button,
+    Box,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel,
+    FormHelperText
+} from '@mui/material';
 
 const App = () => {
     const [input, setInput] = useState('');
+    const [nValue, setNValue] = useState('');
+    const [inputMode, setInputMode] = useState('text');
     const [results, setResults] = useState([]);
-    const [appendDollar, setAppendDollar] = useState(false);  // State to track the checkbox
+    const [error, setError] = useState(false);
+    const [helperText, setHelperText] = useState('');
+    const acceptableCharacters = new Set(['a', 'b', '$']);
 
-    const handleInputChange = (event) => {
-        setInput(event.target.value);
+    const validateInput = (input) => {
+        const regex = /^[ab]*\$?$/; // Adjust regex as needed
+        return regex.test(input);
     };
 
-    const handleCheckboxChange = () => {
-        setAppendDollar(!appendDollar);  // Toggle the checkbox state
+    const handleModeChange = (event) => {
+        setInputMode(event.target.value);
+        // Reset states
+        setInput('');
+        setNValue('');
+        setError(false);
+        setHelperText('');
+    };
+
+    const handleInputChange = (event) => {
+        const value = event.target.value;
+        if (validateInput(value)) {
+            setInput(value);
+            setError(false);
+            setHelperText('');
+        } else {
+            setError(true);
+            setHelperText('Incorrect entry. Use only "a", "b", or "$".');
+        }
+    };
+
+    const handleNChange = (event) => {
+        const n = event.target.value;
+        setNValue(n);
+        if (/^\d*$/.test(n)) { // Ensure it's a non-negative integer
+            setInput('a'.repeat(n) + 'b'.repeat(n));
+            setError(false);
+            setHelperText('');
+        } else {
+            setError(true);
+            setHelperText('n must be a non-negative integer.');
+        }
     };
 
     const handleProcessInput = () => {
-        let processedInput = appendDollar ? input + '$' : input;  // Append '$' if checkbox is checked
+        // Validation here is based on the mode
+        if (inputMode === 'text' && !validateInput(input)) {
+            setError(true);
+            setHelperText('Input contains invalid characters.');
+            return;
+        }
+
+        if (inputMode === 'exponent' && (error || !nValue)) {
+            setError(true);
+            setHelperText('Please enter a valid exponent n.');
+            return;
+        }
+        
+        let processedInput = (inputMode === 'exponent' ? 'a'.repeat(nValue) + 'b'.repeat(nValue) : input.trim().replace(/\$+$/, '')) + '$';
+
         const dpda = new DPDA(
             new Set(['p', 'q', 'f', 'r']),
-            new Set(['a', 'b', '$']),
+            acceptableCharacters,
             new Set(['A', 'Z']),
             {
                 'p': {
-                    'a_Z': {newState: 'p', stackPushSymbols: ['A']},
-                    'a_A': {newState: 'p', stackPushSymbols: ['A']},
-                    'b_A': {newState: 'q', stackPushSymbols: []},
-                    '$_Z': {newState: 'f', stackPushSymbols: []},
+                    'a_Z': { newState: 'p', stackPushSymbols: ['A'] },
+                    'a_A': { newState: 'p', stackPushSymbols: ['A'] },
+                    'b_A': { newState: 'q', stackPushSymbols: [] },
+                    '$_Z': { newState: 'f', stackPushSymbols: [] },
                 },
                 'q': {
-                    'b_A': {newState: 'q', stackPushSymbols: []},
-                    '$_Z': {newState: 'f', stackPushSymbols: []},
-                    'b_Z': {newState: 'r', stackPushSymbols: []},
+                    'b_A': { newState: 'q', stackPushSymbols: [] },
+                    '$_Z': { newState: 'f', stackPushSymbols: [] },
                 },
                 'r': {},
             },
@@ -38,55 +104,131 @@ const App = () => {
             'Z',
             new Set(['f'])
         );
-
         let configurations = [];
-        let errorOccurred = false;
+        let index = 0;
+
         for (const config of dpda.readInputStepwise(processedInput)) {
-            if (config.error) {
-                errorOccurred = true;
-                alert(config.error);
-                break;
-            }
             configurations.push({
+                step: index++,
                 state: config.state,
+                unreadInput: config.remainingInput,
                 stack: config.stack.stack.join(''),
-                remainingInput: config.remainingInput
+                deltaUsed: config.deltaRule,
+                rUsed: config.rRule,
+                error: config.error
             });
+            if (config.error) {
+                break; // Stop processing on first error
+            }
         }
-        if (!errorOccurred) {
-            setResults(configurations);
+
+        if (configurations.length === 0 || configurations[configurations.length - 1].error) {
+            configurations.push({ message: "Language not accepted or no valid configurations found." });
         }
+
+        setResults(configurations);
     };
 
     return (
-        <div>
-            <h1>DPDA Simulator</h1>
-            <input
-                type="text"
-                value={input}
-                onChange={handleInputChange}
-                placeholder="Enter a string to simulate"
-            />
-            <button onClick={handleProcessInput}>
-                Process String
-            </button>
-            <label>
-                <input
-                    type="checkbox"
-                    checked={appendDollar}
-                    onChange={handleCheckboxChange}
+        <Box sx={{ width: '100%', maxWidth: 750, m: 'auto' }}>
+            <Typography variant="h4" gutterBottom>
+                DPDA Simulator for L = {`{ a^n b^n | n ≥ 0 }`}
+            </Typography>
+
+            <FormControl fullWidth margin="normal">
+                <InputLabel id="input-mode-select-label">Input Mode</InputLabel>
+                <Select
+                    labelId="input-mode-select-label"
+                    id="input-mode-select"
+                    value={inputMode}
+                    label="Input Mode"
+                    onChange={handleModeChange}
+                >
+                    <MenuItem value="text">Text</MenuItem>
+                    <MenuItem value="exponent">Exponent n</MenuItem>
+                </Select>
+            </FormControl>
+
+            {inputMode === 'text' ? (
+                <TextField
+                    fullWidth
+                    error={error}
+                    id="outlined-input"
+                    label="Enter string"
+                    value={input}
+                    onChange={handleInputChange}
+                    helperText={helperText}
+                    margin="normal"
                 />
-                Append '$' automatically
-            </label>
-            <div>
-                <h2>Results:</h2>
-                {results.map((result, index) => (
-                    <div key={index}>
-                        Step {index}: State: {result.state}, Stack: {result.stack}, Remaining Input: {result.remainingInput}
-                    </div>
-                ))}
-            </div>
-        </div>
+            ) : (
+                <TextField
+                    fullWidth
+                    error={error}
+                    id="outlined-n-value"
+                    label="Enter exponent n"
+                    type="number"
+                    value={nValue}
+                    onChange={handleNChange}
+                    helperText={helperText}
+                    margin="normal"
+                />
+            )}
+
+            <Button variant="contained" onClick={handleProcessInput} disabled={error} margin="normal">
+                Process String
+            </Button>
+
+            <TableContainer component={Paper}>
+                <Table aria-label="DPDA results table">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell align="center" colSpan={6}>
+                                Simulation Results
+                            </TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell>Step</TableCell>
+                            <TableCell>State</TableCell>
+                            <TableCell>Unread Input</TableCell>
+                            <TableCell>Top of Stack</TableCell>
+                            <TableCell>Δ Used</TableCell>
+                            <TableCell>R Used</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {results.length === 0 && (
+                            <TableRow>
+                                <TableCell align="center" colSpan={6}>
+                                    <Typography variant="subtitle1" component="div" style={{ color: 'red' }}>
+                                        No configurations processed.
+                                    </Typography>
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {results.map((result, index) => (
+                            <React.Fragment key={index}> {/* Use React.Fragment to wrap each group of rows */}
+                                <TableRow style={result.error ? { backgroundColor: 'lightcoral' } : {}}>
+                                    <TableCell>{result.step}</TableCell>
+                                    <TableCell>{result.state}</TableCell>
+                                    <TableCell>{result.unreadInput}</TableCell>
+                                    <TableCell>{result.stack}</TableCell>
+                                    <TableCell>{result.deltaUsed}</TableCell>
+                                    <TableCell>{result.rUsed}</TableCell>
+                                </TableRow>
+                                {result.error && (
+                                    // This row is only for the error message
+                                    <TableRow style={{ backgroundColor: 'lightcoral' }}>
+                                        <TableCell colSpan={6} style={{ color: 'darkred' }}>
+                                            Error: {result.error}
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        </Box>
     );
 };
 

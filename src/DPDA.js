@@ -23,11 +23,9 @@ class PDAStack {
         } else {
             console.log(`Attempt to pop initial symbol Z from stack. Ignored.`);
             // Don't actually pop 'Z', just log an attempt to pop
-            return 'Z';  // return 'Z' to indicate that it is the bottom and was not popped
+            return 'Z';
         }
-    }      
-
-    // Returns true if the stack is empty, false otherwise
+    }
 
     isEmpty() {
         let isEmpty = this.stack.length === 0;
@@ -37,11 +35,13 @@ class PDAStack {
 }
 
 class PDAConfiguration {
-    constructor(state, input, stack, error = null) {
+    constructor(state, input, stack, error = null, deltaRule = '', rRule = '') {
         this.state = state;
         this.remainingInput = input;
         this.stack = stack;
         this.error = error;
+        this.deltaRule = deltaRule;
+        this.rRule = rRule;
     }
 }
 
@@ -64,24 +64,37 @@ export default class DPDA {
     
         while (currentConfig.remainingInput.length > 0) {
             console.log(`Processing: State=${currentConfig.state}, Input=${currentConfig.remainingInput}, Stack top=${currentConfig.stack.top()}`);
-            currentConfig = this.getNextConfiguration(currentConfig);
+            let nextConfig = this.getNextConfiguration(currentConfig);
+    
+            // If there's an error, log it, yield the error configuration, and break
+            if (nextConfig.error) {
+                console.error(nextConfig.error);
+                yield nextConfig; // Yield the error state
+                break; // Break the loop after yielding the error state
+            }
+    
+            currentConfig = nextConfig;
             yield currentConfig;
+    
             if (currentConfig.remainingInput.length === 0 && !this.hasAccepted(currentConfig)) {
                 currentConfig.error = "Input not properly terminated or conditions not met for acceptance.";
+                console.error(currentConfig.error);
                 yield currentConfig;
-                return;
+                break; // Ensure to break after yielding the final state with error
             }
         }
     
         if (this.hasAccepted(currentConfig)) {
             console.log("Input accepted.");
-        } else {
+        } else if (!currentConfig.error) { // Check if the error hasn't been handled yet
             console.log("Input rejected.");
+            currentConfig.error = "Input rejected.";
+            yield currentConfig; // Yield the rejected state
         }
     }    
-
+    
     getNextConfiguration(config) {
-        let inputSymbol = config.remainingInput[0] || 'λ'; // Use 'λ' for empty input symbol
+        let inputSymbol = config.remainingInput[0] || 'ε'; // Handle empty input symbol
         let stackTop = config.stack.top();
         let key = `${inputSymbol}_${stackTop}`;
     
@@ -90,27 +103,31 @@ export default class DPDA {
         if (!this.transitions[config.state] || !this.transitions[config.state][key]) {
             console.warn(`No valid transition found for state: ${config.state}, input: '${inputSymbol}', stack top: '${stackTop}'`);
             return new PDAConfiguration(config.state, config.remainingInput, config.stack, "Rejected due to invalid or incomplete input.");
-        }        
+        }
     
         let transition = this.transitions[config.state][key];
+        let deltaRule = `(${config.state}, ${inputSymbol}, ${stackTop}) → (${transition.newState}, [${transition.stackPushSymbols.join(', ')}])`;
+        let rRule;
+    
         if (transition) {
             if (transition.stackPushSymbols.length > 0) {
-                transition.stackPushSymbols.forEach(symbol => {
-                    config.stack.push(symbol);
-                });
+                rRule = `PUSH ${transition.stackPushSymbols.join('')}`;
+                transition.stackPushSymbols.forEach(symbol => config.stack.push(symbol));
             } else {
-                if (stackTop !== 'Z') {  // Ensure 'Z' is not popped
-                    config.stack.pop();  // Pop only if allowed
+                if (stackTop !== 'Z') {
+                    rRule = `POP ${stackTop}`;
+                    config.stack.pop();
+                } else {
+                    rRule = `NO OP`;  // No operation performed on the stack
                 }
             }
             config.state = transition.newState;
-            if (inputSymbol !== 'λ') {
-                config.remainingInput = config.remainingInput.slice(1); // Consume one input symbol
+            if (inputSymbol !== 'ε') {
+                config.remainingInput = config.remainingInput.slice(1);
             }
         }
     
-        console.log(`Transitioned to State=${config.state}, Stack now: ${config.stack.stack.join(',')}`);
-        return config;
+        return new PDAConfiguration(config.state, config.remainingInput, config.stack, null, deltaRule, rRule);
     }      
     
     hasAccepted(config) {
