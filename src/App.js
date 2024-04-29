@@ -1,23 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DPDA from './DPDA';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Paper,
-    Typography,
-    TextField,
-    Button,
-    Box,
-    MenuItem,
-    Select,
-    FormControl,
-    InputLabel,
-    FormHelperText
-} from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, TextField, Button, Box, MenuItem, Select, FormControl, InputLabel } from '@mui/material';
 
 const App = () => {
     const [input, setInput] = useState('');
@@ -28,8 +11,14 @@ const App = () => {
     const [helperText, setHelperText] = useState('');
     const acceptableCharacters = new Set(['a', 'b', '$']);
 
+    useEffect(() => {
+        if (typeof window?.MathJax !== "undefined") {
+            window.MathJax.typeset()
+        }
+    }, [])
+
     const validateInput = (input) => {
-        const regex = /^[ab]*\$?$/; // Adjust regex as needed
+        const regex = /^[ab]*\$?$/;
         return regex.test(input);
     };
 
@@ -68,7 +57,6 @@ const App = () => {
     };
 
     const handleProcessInput = () => {
-        // Validation here is based on the mode
         if (inputMode === 'text' && !validateInput(input)) {
             setError(true);
             setHelperText('Input contains invalid characters.');
@@ -80,7 +68,7 @@ const App = () => {
             setHelperText('Please enter a valid exponent n.');
             return;
         }
-        
+
         let processedInput = (inputMode === 'exponent' ? 'a'.repeat(nValue) + 'b'.repeat(nValue) : input.trim().replace(/\$+$/, '')) + '$';
 
         const dpda = new DPDA(
@@ -130,9 +118,13 @@ const App = () => {
     };
 
     return (
-        <Box sx={{ width: '100%', maxWidth: 750, m: 'auto' }}>
-            <Typography variant="h4" gutterBottom>
-                DPDA Simulator for L = {`{ a^n b^n | n ≥ 0 }`}
+        <Box sx={{ width: '100%', maxWidth: 750, mx: 'auto', my: 4 }}>
+            <Typography variant="h3" component="h1" textAlign="center" mb={2}>
+                Deterministic Pushdown Automaton Simulator
+            </Typography>
+
+            <Typography variant="h5" component="div" textAlign="center" mb={4}>
+                <span dangerouslySetInnerHTML={{ __html: 'L = \\( a^n b^n \\mid n \\geq 0 \\)' }} />
             </Typography>
 
             <FormControl fullWidth margin="normal">
@@ -178,14 +170,9 @@ const App = () => {
                 Process String
             </Button>
 
-            <TableContainer component={Paper}>
-                <Table aria-label="DPDA results table">
+            <TableContainer component={Paper} elevation={3} sx={{ marginTop: 3 }}>
+                <Table aria-label="DPDA Simulation Results" sx={{ minWidth: 650 }}>
                     <TableHead>
-                        <TableRow>
-                            <TableCell align="center" colSpan={6}>
-                                Simulation Results
-                            </TableCell>
-                        </TableRow>
                         <TableRow>
                             <TableCell>Step</TableCell>
                             <TableCell>State</TableCell>
