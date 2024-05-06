@@ -9,7 +9,6 @@ const App = () => {
     const [results, setResults] = useState([]);
     const [error, setError] = useState(false);
     const [helperText, setHelperText] = useState('');
-    const acceptableCharacters = new Set(['a', 'b', '$']);
 
     useEffect(() => {
         if (typeof window?.MathJax !== "undefined") {
@@ -72,25 +71,32 @@ const App = () => {
         let processedInput = (inputMode === 'exponent' ? 'a'.repeat(nValue) + 'b'.repeat(nValue) : input.trim().replace(/\$+$/, '')) + '$';
 
         const dpda = new DPDA(
-            new Set(['p', 'q', 'f', 'r']),
-            acceptableCharacters,
-            new Set(['A', 'Z']),
+            new Set(['p', 'qa', 'qb', 'q$']),
+            new Set(['a', 'b', '$']),
+            new Set(['A', 'S']),
             {
                 'p': {
-                    'a_Z': { newState: 'p', stackPushSymbols: ['A'] },
-                    'a_A': { newState: 'p', stackPushSymbols: ['A'] },
-                    'b_A': { newState: 'q', stackPushSymbols: [] },
-                    '$_Z': { newState: 'f', stackPushSymbols: [] },
+                    'e_Z': { newState: 'q', stackPushSymbols: ['S'], ruleDescription: '' },
                 },
                 'q': {
-                    'b_A': { newState: 'q', stackPushSymbols: [] },
-                    '$_Z': { newState: 'f', stackPushSymbols: [] },
+                    'a_e': { newState: 'qa', stackPushSymbols: [], ruleDescription: '' },
+                    'b_e': { newState: 'qb', stackPushSymbols: [], ruleDescription: '' },
+                    '$_Z': { newState: 'q$', stackPushSymbols: ['pop'], ruleDescription: '' },
                 },
-                'r': {},
+                'qa': {
+                    'e_a': { newState: 'q', stackPushSymbols: ['pop'], ruleDescription: '' },
+                    'e_S': { newState: 'qa', stackPushSymbols: ['pop', 'b', 'S', 'a'], ruleDescription: 'S -> aSb' },
+                },
+                'qb': {
+                    'e_b': { newState: 'q', stackPushSymbols: ['pop'], ruleDescription: '' },
+                    'e_S': { newState: 'qb', stackPushSymbols: ['pop'], ruleDescription: 'S -> e' },
+                },
+                'q$': {
+                    // No transitions out of the final state, q$ is a halting state
+                }
             },
             'p',
-            'Z',
-            new Set(['f'])
+            new Set(['q$'])
         );
         let configurations = [];
         let index = 0;
@@ -120,7 +126,7 @@ const App = () => {
     return (
         <Box sx={{ width: '100%', maxWidth: 750, mx: 'auto', my: 4 }}>
             <Typography variant="h3" component="h1" textAlign="center" mb={2}>
-                Deterministic Pushdown Automaton Simulator
+                Deterministic Pushdown Automaton Implementation
             </Typography>
 
             <Typography variant="h5" component="div" textAlign="center" mb={4}>
@@ -171,13 +177,13 @@ const App = () => {
             </Button>
 
             <TableContainer component={Paper} elevation={3} sx={{ marginTop: 3 }}>
-                <Table aria-label="DPDA Simulation Results" sx={{ minWidth: 650 }}>
+                <Table aria-label="DPDA Results" sx={{ minWidth: 650 }}>
                     <TableHead>
                         <TableRow>
                             <TableCell>Step</TableCell>
                             <TableCell>State</TableCell>
                             <TableCell>Unread Input</TableCell>
-                            <TableCell>Top of Stack</TableCell>
+                            <TableCell>Stack</TableCell>
                             <TableCell>Δ Used</TableCell>
                             <TableCell>R Used</TableCell>
                         </TableRow>

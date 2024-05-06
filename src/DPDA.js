@@ -1,141 +1,151 @@
 class PDAStack {
-    constructor(initialSymbol) {
-        this.stack = [initialSymbol];
-        console.log(`Stack initialized with: ${initialSymbol}`);
+    constructor() {
+        this.stack = ['Z'];
     }
 
     top() {
-        let top = this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
-        console.log(`Top of stack: ${top}`);
-        return top;
+        // Return the top of the stack or 'e' if the stack is empty
+        return this.stack.length > 0 ? this.stack[0] : 'e';
     }
 
     push(symbol) {
-        this.stack.push(symbol);
-        console.log(`Pushed onto stack: ${symbol}, Stack now: ${this.stack.join(',')}`);
-    }
-    
-    pop() {
-        if (this.stack[this.stack.length - 1] !== 'Z') {
-            let popped = this.stack.pop();
-            console.log(`Popped from stack: ${popped}, Stack now: ${this.stack.join(',')}`);
-            return popped;
-        } else {
-            console.log(`Attempt to pop initial symbol Z from stack. Ignored.`);
-            // Don't actually pop 'Z', just log an attempt to pop
-            return 'Z';
+        // Push a symbol onto the stack unless it's 'e', which represents an empty action
+        if (symbol !== 'e') {
+            this.stack.unshift(symbol);
         }
     }
 
+    pop() {
+        // Pop and return the top symbol of the stack if it's not empty
+        return this.stack.length > 0 ? this.stack.shift() : 'e';
+    }
+
     isEmpty() {
-        let isEmpty = this.stack.length === 0;
-        console.log(`Stack is empty: ${isEmpty}`);
-        return isEmpty;
+        // Check if the stack is empty
+        return this.stack.length === 0;
     }
 }
 
 class PDAConfiguration {
-    constructor(state, input, stack, error = null, deltaRule = '', rRule = '') {
+    constructor(state, remainingInput, stack) {
         this.state = state;
-        this.remainingInput = input;
+        this.remainingInput = remainingInput;
         this.stack = stack;
-        this.error = error;
-        this.deltaRule = deltaRule;
-        this.rRule = rRule;
+        this.error = null;
+        this.deltaRule = '';
+        this.rRule = '';
     }
 }
 
 export default class DPDA {
-    constructor(states, inputSymbols, stackSymbols, transitions, initialState, initialStackSymbol, finalStates) {
+    constructor(states, inputSymbols, stackSymbols, transitions, initialState, finalStates) {
+        console.log("DPDA initialized.");
         this.states = states;
         this.inputSymbols = inputSymbols;
         this.stackSymbols = stackSymbols;
         this.transitions = transitions;
         this.initialState = initialState;
-        this.initialStackSymbol = initialStackSymbol;
-        this.finalStates = Array.from(finalStates);
-        console.log(`DPDA initialized with initial state: ${initialState} and initial stack symbol: ${initialStackSymbol}`);
+        this.finalStates = finalStates;
     }
 
     *readInputStepwise(inputStr) {
-        let currentConfig = new PDAConfiguration(this.initialState, inputStr, new PDAStack(this.initialStackSymbol));
-        console.log(`Starting configuration: State=${currentConfig.state}, Input=${inputStr}, Stack top=${currentConfig.stack.top()}`);
+        let currentConfig = new PDAConfiguration(this.initialState, inputStr, new PDAStack());
+        console.log("Initial configuration:", currentConfig);
+
         yield currentConfig;
-    
-        while (currentConfig.remainingInput.length > 0) {
-            console.log(`Processing: State=${currentConfig.state}, Input=${currentConfig.remainingInput}, Stack top=${currentConfig.stack.top()}`);
+
+        while (currentConfig.remainingInput.length > 0 || this.hasLambdaTransition(currentConfig.state, currentConfig.stack.top())) {
+            console.log("Processing configuration:", currentConfig);
+
             let nextConfig = this.getNextConfiguration(currentConfig);
-    
-            // If there's an error, log it, yield the error configuration, and break
             if (nextConfig.error) {
                 console.error(nextConfig.error);
-                yield nextConfig; // Yield the error state
-                break; // Break the loop after yielding the error state
+                yield nextConfig;
+                break;
             }
-    
+
+            console.log("Configuration after transition:", nextConfig);
+            yield nextConfig;
             currentConfig = nextConfig;
-            yield currentConfig;
-    
-            if (currentConfig.remainingInput.length === 0 && !this.hasAccepted(currentConfig)) {
-                currentConfig.error = "Input not properly terminated or conditions not met for acceptance.";
-                console.error(currentConfig.error);
-                yield currentConfig;
-                break; // Ensure to break after yielding the final state with error
-            }
         }
-    
-        if (this.hasAccepted(currentConfig)) {
+
+        if (this.isAccepted(currentConfig)) {
             console.log("Input accepted.");
-        } else if (!currentConfig.error) { // Check if the error hasn't been handled yet
+        } else {
             console.log("Input rejected.");
             currentConfig.error = "Input rejected.";
-            yield currentConfig; // Yield the rejected state
+            yield currentConfig;
         }
-    }    
-    
-    getNextConfiguration(config) {
-        let inputSymbol = config.remainingInput[0] || 'ε'; // Handle empty input symbol
-        let stackTop = config.stack.top();
-        let key = `${inputSymbol}_${stackTop}`;
-    
-        console.log(`Attempting transition for State=${config.state}, Input='${inputSymbol}', Stack top='${stackTop}'`);
-    
-        if (!this.transitions[config.state] || !this.transitions[config.state][key]) {
-            console.warn(`No valid transition found for state: ${config.state}, input: '${inputSymbol}', stack top: '${stackTop}'`);
-            return new PDAConfiguration(config.state, config.remainingInput, config.stack, "Rejected due to invalid or incomplete input.");
-        }
-    
-        let transition = this.transitions[config.state][key];
-        let deltaRule = `(${config.state}, ${inputSymbol}, ${stackTop}) → (${transition.newState}, [${transition.stackPushSymbols.join(', ')}])`;
-        let rRule;
-    
-        if (transition) {
-            if (transition.stackPushSymbols.length > 0) {
-                rRule = `PUSH ${transition.stackPushSymbols.join('')}`;
-                transition.stackPushSymbols.forEach(symbol => config.stack.push(symbol));
-            } else {
-                if (stackTop !== 'Z') {
-                    rRule = `POP ${stackTop}`;
-                    config.stack.pop();
-                } else {
-                    rRule = `NO OP`;  // No operation performed on the stack
-                }
-            }
-            config.state = transition.newState;
-            if (inputSymbol !== 'ε') {
-                config.remainingInput = config.remainingInput.slice(1);
-            }
-        }
-    
-        return new PDAConfiguration(config.state, config.remainingInput, config.stack, null, deltaRule, rRule);
-    }      
-    
-    hasAccepted(config) {
-        return config.state === 'f' && config.stack.stack.join('') === 'Z' && config.remainingInput.length === 0;
     }
 
-    hasLambdaTransition(state, stackSymbol) {
-        let key = `_${stackSymbol}`;
+    applyStackAction(stack, stackPushSymbols) {
+        if (stackPushSymbols.length > 0) {
+            stackPushSymbols.forEach(symbol => {
+                if (symbol === 'pop') {
+                    stack.pop();
+                } else {
+                    stack.push(symbol);
+                }
+            });
+        }
+        // If stackPushSymbols is empty and doesn't include 'pop' or any symbol, do nothing
+    }
+
+    getNextConfiguration(config) {
+        let inputSymbol = config.remainingInput.charAt(0) || 'e';  // 'e' represents empty/lambda
+        let stackTop = config.stack.top() || 'e';  // Get top of stack or 'e' if empty
+        let transitionsAvailable = this.transitions[config.state];
+
+        // Handle explicit lambda transitions (without consuming input)
+        let lambdaKey = `e_${stackTop}`;
+        if (transitionsAvailable && transitionsAvailable[lambdaKey]) {
+            // Lambda transition matching the actual stack top
+            this.applyTransition(config, lambdaKey);
+            // Do not consume any input symbol here
+        } else {
+            // Handle input-based transitions
+            let inputKey = `${inputSymbol}_${stackTop}`;
+            let genericKey = `${inputSymbol}_e`;
+            if (transitionsAvailable && transitionsAvailable[inputKey]) {
+                // Transition that matches both input and stack top
+                this.applyTransition(config, inputKey);
+                if (inputSymbol !== 'e') {  // Only advance input if it's not a lambda transition
+                    config.remainingInput = config.remainingInput.substring(1);
+                }
+            } else if (transitionsAvailable && transitionsAvailable[genericKey]) {
+                // Transition that matches input but does not care about stack top
+                this.applyTransition(config, genericKey);
+                if (inputSymbol !== 'e') {  // Only advance input if it's not a lambda transition
+                    config.remainingInput = config.remainingInput.substring(1);
+                }
+            } else {
+                config.error = "Input rejected.";
+            }
+        }
+        return config;
+    }
+
+    formatTransition(x, y, z, m, n) {
+        if (n.includes('pop')) { n = n.filter(x => x!== 'pop'); }
+        if (n.length === 0) { n = ['e']; }
+
+        return `(${x}, ${y}, ${z}) -> (${m}, ${n.reverse().join('')})`;
+    }
+
+    applyTransition(config, key) {
+        let transition = this.transitions[config.state][key];
+        config.deltaRule = this.formatTransition(config.state, key.split('_')[0], key.split('_')[1], transition.newState, transition.stackPushSymbols);
+        config.rRule = transition.ruleDescription; // Description of the rule
+        this.applyStackAction(config.stack, transition.stackPushSymbols);
+        config.state = transition.newState;
+    }
+
+    isAccepted(config) {
+        return this.finalStates.has(config.state) && config.stack.stack.length === 0 && config.remainingInput.length === 0;
+    }
+
+    hasLambdaTransition(state, stackTop) {
+        let key = `e_${stackTop}`;
         return this.transitions[state] && this.transitions[state][key];
     }
 }
